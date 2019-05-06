@@ -23,12 +23,18 @@ import org.apache.calcite.linq4j.Linq4j;
 import org.apache.calcite.linq4j.QueryProvider;
 import org.apache.calcite.linq4j.Queryable;
 import org.apache.calcite.linq4j.function.Function1;
+import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.prepare.Prepare;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.TableModify;
+import org.apache.calcite.rel.logical.LogicalTableModify;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.schema.ModifiableTable;
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.schema.TranslatableTable;
 import org.apache.calcite.schema.impl.AbstractTableQueryable;
@@ -45,15 +51,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -61,7 +59,7 @@ import java.util.stream.Collectors;
 /**
  * Table based on an Elasticsearch type.
  */
-public class ElasticsearchTable extends AbstractQueryableTable implements TranslatableTable {
+public class ElasticsearchTable extends AbstractQueryableTable implements TranslatableTable, ModifiableTable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ElasticsearchTable.class);
 
@@ -310,6 +308,26 @@ public class ElasticsearchTable extends AbstractQueryableTable implements Transl
             relDataTypeFactory.createSqlType(SqlTypeName.ANY),
             true));
     return relDataTypeFactory.builder().add("_MAP", mapType).build();
+  }
+
+  @Override public Collection getModifiableCollection() {
+    return null;
+  }
+
+  @Override public TableModify toModificationRel(RelOptCluster cluster,
+                                                 RelOptTable table,
+                                                 Prepare.CatalogReader catalogReader,
+                                                 RelNode child,
+                                                 TableModify.Operation operation,
+                                                 List<String> updateColumnList,
+                                                 List<RexNode> sourceExpressionList,
+                                                 boolean flattened) {
+
+    jdbcSchema.convention.register(cluster.getPlanner());
+
+    return new LogicalTableModify(cluster, cluster.traitSetOf(Convention.NONE),
+            table, catalogReader, child, operation, updateColumnList,
+            sourceExpressionList, flattened);
   }
 
   @Override public String toString() {

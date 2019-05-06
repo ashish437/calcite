@@ -19,24 +19,29 @@ package org.apache.calcite.adapter.elasticsearch;
 import org.apache.calcite.adapter.enumerable.RexImpTable;
 import org.apache.calcite.adapter.enumerable.RexToLixTranslator;
 import org.apache.calcite.adapter.java.JavaTypeFactory;
-import org.apache.calcite.plan.Convention;
-import org.apache.calcite.plan.RelOptRule;
-import org.apache.calcite.plan.RelTrait;
-import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.adapter.jdbc.JdbcConvention;
+import org.apache.calcite.adapter.jdbc.JdbcRel;
+import org.apache.calcite.linq4j.Queryable;
+import org.apache.calcite.linq4j.tree.Expression;
+import org.apache.calcite.plan.*;
+import org.apache.calcite.prepare.Prepare;
 import org.apache.calcite.rel.InvalidRelException;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.core.Sort;
+import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexVisitorImpl;
+import org.apache.calcite.schema.ModifiableTable;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -53,16 +58,18 @@ import java.util.List;
  */
 class ElasticsearchRules {
   static final RelOptRule[] RULES = {
-      ElasticsearchSortRule.INSTANCE,
-      ElasticsearchFilterRule.INSTANCE,
-      ElasticsearchProjectRule.INSTANCE,
-      ElasticsearchAggregateRule.INSTANCE
+          ElasticsearchSortRule.INSTANCE,
+          ElasticsearchFilterRule.INSTANCE,
+          ElasticsearchProjectRule.INSTANCE,
+          ElasticsearchAggregateRule.INSTANCE
   };
 
-  private ElasticsearchRules() {}
+  private ElasticsearchRules() {
+  }
 
   /**
    * Returns 'string' if it is a call to item['string'], null otherwise.
+   *
    * @param call current relational expression
    * @return literal value
    */
@@ -74,9 +81,9 @@ class ElasticsearchRules {
     final RexNode op1 = call.getOperands().get(1);
 
     if (op0 instanceof RexInputRef
-        && ((RexInputRef) op0).getIndex() == 0
-        && op1 instanceof RexLiteral
-        && ((RexLiteral) op1).getValue2() instanceof String) {
+            && ((RexInputRef) op0).getIndex() == 0
+            && op1 instanceof RexLiteral
+            && ((RexLiteral) op1).getValue2() instanceof String) {
       return (String) ((RexLiteral) op1).getValue2();
     }
     return null;
@@ -84,7 +91,8 @@ class ElasticsearchRules {
 
   static boolean isItem(RexNode node) {
     final Boolean result = node.accept(new RexVisitorImpl<Boolean>(false) {
-      @Override public Boolean visitCall(final RexCall call) {
+      @Override
+      public Boolean visitCall(final RexCall call) {
         return isItem(call) != null;
       }
     });
@@ -93,17 +101,19 @@ class ElasticsearchRules {
 
   static List<String> elasticsearchFieldNames(final RelDataType rowType) {
     return SqlValidatorUtil.uniquify(
-        new AbstractList<String>() {
-          @Override public String get(int index) {
-            final String name = rowType.getFieldList().get(index).getName();
-            return name.startsWith("$") ? "_" + name.substring(2) : name;
-          }
+            new AbstractList<String>() {
+              @Override
+              public String get(int index) {
+                final String name = rowType.getFieldList().get(index).getName();
+                return name.startsWith("$") ? "_" + name.substring(2) : name;
+              }
 
-          @Override public int size() {
-            return rowType.getFieldCount();
-          }
-        },
-        SqlValidatorUtil.EXPR_SUGGESTER, true);
+              @Override
+              public int size() {
+                return rowType.getFieldCount();
+              }
+            },
+            SqlValidatorUtil.EXPR_SUGGESTER, true);
   }
 
   static String quote(String s) {
@@ -112,7 +122,7 @@ class ElasticsearchRules {
 
   static String stripQuotes(String s) {
     return s.length() > 1 && s.startsWith("\"") && s.endsWith("\"")
-        ? s.substring(1, s.length() - 1) : s;
+            ? s.substring(1, s.length() - 1) : s;
   }
 
   /**
@@ -129,21 +139,24 @@ class ElasticsearchRules {
       this.inFields = inFields;
     }
 
-    @Override public String visitLiteral(RexLiteral literal) {
+    @Override
+    public String visitLiteral(RexLiteral literal) {
       if (literal.getValue() == null) {
         return "null";
       }
       return "\"literal\":\""
-        + RexToLixTranslator.translateLiteral(literal, literal.getType(),
-          typeFactory, RexImpTable.NullAs.NOT_POSSIBLE)
-        + "\"";
+              + RexToLixTranslator.translateLiteral(literal, literal.getType(),
+              typeFactory, RexImpTable.NullAs.NOT_POSSIBLE)
+              + "\"";
     }
 
-    @Override public String visitInputRef(RexInputRef inputRef) {
+    @Override
+    public String visitInputRef(RexInputRef inputRef) {
       return quote(inFields.get(inputRef.getIndex()));
     }
 
-    @Override public String visitCall(RexCall call) {
+    @Override
+    public String visitCall(RexCall call) {
       final String name = isItem(call);
       if (name != null) {
         return name;
@@ -160,12 +173,12 @@ class ElasticsearchRules {
         }
       }
       throw new IllegalArgumentException("Translation of " + call
-          + " is not supported by ElasticsearchProject");
+              + " is not supported by ElasticsearchProject");
     }
 
     List<String> visitList(List<RexNode> list) {
       final List<String> strings = new ArrayList<>();
-      for (RexNode node: list) {
+      for (RexNode node : list) {
         strings.add(node.accept(this));
       }
       return strings;
@@ -180,7 +193,7 @@ class ElasticsearchRules {
     final Convention out;
 
     ElasticsearchConverterRule(Class<? extends RelNode> clazz, RelTrait in, Convention out,
-        String description) {
+                               String description) {
       super(clazz, in, out, description);
       this.out = out;
     }
@@ -192,19 +205,20 @@ class ElasticsearchRules {
    */
   private static class ElasticsearchSortRule extends ElasticsearchConverterRule {
     private static final ElasticsearchSortRule INSTANCE =
-        new ElasticsearchSortRule();
+            new ElasticsearchSortRule();
 
     private ElasticsearchSortRule() {
       super(Sort.class, Convention.NONE, ElasticsearchRel.CONVENTION,
-          "ElasticsearchSortRule");
+              "ElasticsearchSortRule");
     }
 
-    @Override public RelNode convert(RelNode relNode) {
+    @Override
+    public RelNode convert(RelNode relNode) {
       final Sort sort = (Sort) relNode;
       final RelTraitSet traitSet = sort.getTraitSet().replace(out).replace(sort.getCollation());
       return new ElasticsearchSort(relNode.getCluster(), traitSet,
-        convert(sort.getInput(), traitSet.replace(RelCollations.EMPTY)), sort.getCollation(),
-        sort.offset, sort.fetch);
+              convert(sort.getInput(), traitSet.replace(RelCollations.EMPTY)), sort.getCollation(),
+              sort.offset, sort.fetch);
     }
   }
 
@@ -217,15 +231,16 @@ class ElasticsearchRules {
 
     private ElasticsearchFilterRule() {
       super(LogicalFilter.class, Convention.NONE, ElasticsearchRel.CONVENTION,
-        "ElasticsearchFilterRule");
+              "ElasticsearchFilterRule");
     }
 
-    @Override public RelNode convert(RelNode relNode) {
+    @Override
+    public RelNode convert(RelNode relNode) {
       final LogicalFilter filter = (LogicalFilter) relNode;
       final RelTraitSet traitSet = filter.getTraitSet().replace(out);
       return new ElasticsearchFilter(relNode.getCluster(), traitSet,
-        convert(filter.getInput(), out),
-        filter.getCondition());
+              convert(filter.getInput(), out),
+              filter.getCondition());
     }
   }
 
@@ -238,7 +253,7 @@ class ElasticsearchRules {
 
     private ElasticsearchAggregateRule() {
       super(LogicalAggregate.class, Convention.NONE, ElasticsearchRel.CONVENTION,
-          "ElasticsearchAggregateRule");
+              "ElasticsearchAggregateRule");
     }
 
     public RelNode convert(RelNode rel) {
@@ -246,13 +261,13 @@ class ElasticsearchRules {
       final RelTraitSet traitSet = agg.getTraitSet().replace(out);
       try {
         return new ElasticsearchAggregate(
-            rel.getCluster(),
-            traitSet,
-            convert(agg.getInput(), traitSet.simplify()),
-            agg.indicator,
-            agg.getGroupSet(),
-            agg.getGroupSets(),
-            agg.getAggCallList());
+                rel.getCluster(),
+                traitSet,
+                convert(agg.getInput(), traitSet.simplify()),
+                agg.indicator,
+                agg.getGroupSet(),
+                agg.getGroupSets(),
+                agg.getAggCallList());
       } catch (InvalidRelException e) {
         return null;
       }
@@ -269,16 +284,56 @@ class ElasticsearchRules {
 
     private ElasticsearchProjectRule() {
       super(LogicalProject.class, Convention.NONE, ElasticsearchRel.CONVENTION,
-        "ElasticsearchProjectRule");
+              "ElasticsearchProjectRule");
     }
 
-    @Override public RelNode convert(RelNode relNode) {
+    @Override
+    public RelNode convert(RelNode relNode) {
       final LogicalProject project = (LogicalProject) relNode;
       final RelTraitSet traitSet = project.getTraitSet().replace(out);
       return new ElasticsearchProject(project.getCluster(), traitSet,
-        convert(project.getInput(), out), project.getProjects(), project.getRowType());
+              convert(project.getInput(), out), project.getProjects(), project.getRowType());
     }
   }
+
+  public static class ElasticsearchTableModify extends TableModify implements ElasticsearchRel {
+    private final Expression expression;
+
+    public ElasticsearchTableModify(RelOptCluster cluster,
+                                    RelTraitSet traitSet,
+                                    RelOptTable table,
+                                    Prepare.CatalogReader catalogReader,
+                                    RelNode input,
+                                    Operation operation,
+                                    List<String> updateColumnList,
+                                    List<RexNode> sourceExpressionList,
+                                    boolean flattened) {
+      super(cluster, traitSet, table, catalogReader, input, operation,
+              updateColumnList, sourceExpressionList, flattened);
+      assert input.getConvention() instanceof JdbcConvention;
+      assert getConvention() instanceof JdbcConvention;
+      final ModifiableTable modifiableTable =
+              table.unwrap(ModifiableTable.class);
+      if (modifiableTable == null) {
+        throw new AssertionError(); // TODO: user error in validator
+      }
+      this.expression = table.getExpression(Queryable.class);
+      if (expression == null) {
+        throw new AssertionError(); // TODO: user error in validator
+      }
+    }
+
+    @Override
+   public void implement(Implementor implementor) {
+
+    }
+  }
+
+  public RelOptCost computeSelfCost(RelOptPlanner planner,
+                                              RelMetadataQuery mq) {
+    return super.computeSelfCost(planner, mq).multiplyBy(.1);
+  }
+
 }
 
 // End ElasticsearchRules.java
