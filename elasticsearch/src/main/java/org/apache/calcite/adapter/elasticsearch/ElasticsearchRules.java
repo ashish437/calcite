@@ -19,8 +19,6 @@ package org.apache.calcite.adapter.elasticsearch;
 import org.apache.calcite.adapter.enumerable.RexImpTable;
 import org.apache.calcite.adapter.enumerable.RexToLixTranslator;
 import org.apache.calcite.adapter.java.JavaTypeFactory;
-import org.apache.calcite.adapter.jdbc.JdbcConvention;
-import org.apache.calcite.adapter.jdbc.JdbcRel;
 import org.apache.calcite.linq4j.Queryable;
 import org.apache.calcite.linq4j.tree.Expression;
 import org.apache.calcite.plan.*;
@@ -46,10 +44,10 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
-
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Rules and relational operators for
@@ -61,7 +59,8 @@ class ElasticsearchRules {
           ElasticsearchSortRule.INSTANCE,
           ElasticsearchFilterRule.INSTANCE,
           ElasticsearchProjectRule.INSTANCE,
-          ElasticsearchAggregateRule.INSTANCE
+          ElasticsearchAggregateRule.INSTANCE,
+          ElasticsearchTableModificationRule.INSTANCE
   };
 
   private ElasticsearchRules() {
@@ -197,6 +196,12 @@ class ElasticsearchRules {
       super(clazz, in, out, description);
       this.out = out;
     }
+//    <R extends RelNode> ElasticsearchConverterRule(Class<R> clazz,
+//                                          Predicate<? super R> predicate, RelTrait in, ElasticsearchConvention out,
+//                                          RelBuilderFactory relBuilderFactory, String description) {
+//      super(clazz, predicate, in, out, relBuilderFactory, description);
+//      this.out = out;
+//    }
   }
 
   /**
@@ -296,6 +301,36 @@ class ElasticsearchRules {
     }
   }
 
+  public static class ElasticsearchTableModificationRule extends ElasticsearchRules.ElasticsearchConverterRule {
+    private static final ElasticsearchTableModificationRule INSTANCE = new ElasticsearchTableModificationRule();
+
+    /** Creates a JdbcTableModificationRule. */
+    private ElasticsearchTableModificationRule() {
+      super(TableModify.class, Convention.NONE,  ElasticsearchRel.CONVENTION,  "ElasticSearchModificationRule");
+    }
+
+    @Override public RelNode convert(RelNode rel) {
+      final TableModify modify =
+              (TableModify) rel;
+      final ModifiableTable modifiableTable =
+              modify.getTable().unwrap(ModifiableTable.class);
+      if (modifiableTable == null) {
+        return null;
+      }
+      final RelTraitSet traitSet =
+              modify.getTraitSet().replace(out);
+      return new ElasticsearchRules.ElasticsearchTableModify(
+              modify.getCluster(), traitSet,
+              modify.getTable(),
+              modify.getCatalogReader(),
+              convert(modify.getInput(), traitSet),
+              modify.getOperation(),
+              modify.getUpdateColumnList(),
+              modify.getSourceExpressionList(),
+              modify.isFlattened());
+    }
+  }
+
   public static class ElasticsearchTableModify extends TableModify implements ElasticsearchRel {
     private final Expression expression;
 
@@ -310,8 +345,8 @@ class ElasticsearchRules {
                                     boolean flattened) {
       super(cluster, traitSet, table, catalogReader, input, operation,
               updateColumnList, sourceExpressionList, flattened);
-      assert input.getConvention() instanceof JdbcConvention;
-      assert getConvention() instanceof JdbcConvention;
+      assert input.getConvention() instanceof ElasticsearchConvention;
+      assert getConvention() instanceof ElasticsearchConvention;
       final ModifiableTable modifiableTable =
               table.unwrap(ModifiableTable.class);
       if (modifiableTable == null) {
@@ -327,12 +362,25 @@ class ElasticsearchRules {
    public void implement(Implementor implementor) {
 
     }
+
+    @Override
+    public RelOptCost computeSelfCost(RelOptPlanner planner,
+                                      RelMetadataQuery mq) {
+      return super.computeSelfCost(planner, mq).multiplyBy(.1);
+    }
+
+    @Override public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {
+      return new ElasticsearchRules.ElasticsearchTableModify(
+              getCluster(), traitSet, getTable(), getCatalogReader(),
+              sole(inputs), getOperation(), getUpdateColumnList(),
+              getSourceExpressionList(), isFlattened());
+    }
+    /*public ElasticsearchImplementor.Result implement(ElasticsearchImplementor implementor) {
+      return implementor.implement(this);
+    }*/
   }
 
-  public RelOptCost computeSelfCost(RelOptPlanner planner,
-                                              RelMetadataQuery mq) {
-    return super.computeSelfCost(planner, mq).multiplyBy(.1);
-  }
+
 
 }
 

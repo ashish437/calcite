@@ -323,7 +323,7 @@ public class ElasticsearchTable extends AbstractQueryableTable implements Transl
                                                  List<RexNode> sourceExpressionList,
                                                  boolean flattened) {
 
-    jdbcSchema.convention.register(cluster.getPlanner());
+  //  jdbcSchema.convention.register(cluster.getPlanner());
 
     return new LogicalTableModify(cluster, cluster.traitSetOf(Convention.NONE),
             table, catalogReader, child, operation, updateColumnList,
