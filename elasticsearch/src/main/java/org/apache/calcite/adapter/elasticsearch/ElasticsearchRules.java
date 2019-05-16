@@ -54,13 +54,14 @@ import java.util.function.Predicate;
  * {@link ElasticsearchRel#CONVENTION ELASTICSEARCH}
  * calling convention.
  */
-class ElasticsearchRules {
-  static final RelOptRule[] RULES = {
+public class ElasticsearchRules {
+ public static final RelOptRule[] RULES = {
           ElasticsearchSortRule.INSTANCE,
           ElasticsearchFilterRule.INSTANCE,
           ElasticsearchProjectRule.INSTANCE,
           ElasticsearchAggregateRule.INSTANCE,
-          ElasticsearchTableModificationRule.INSTANCE
+          ElasticsearchTableModificationRule.INSTANCE,
+          ElasticsearchToEnumerableConverterRule.INSTANCE
   };
 
   private ElasticsearchRules() {
@@ -366,7 +367,7 @@ class ElasticsearchRules {
     @Override
     public RelOptCost computeSelfCost(RelOptPlanner planner,
                                       RelMetadataQuery mq) {
-      return super.computeSelfCost(planner, mq).multiplyBy(.1);
+      return super.computeSelfCost(planner, mq).multiplyBy(.001);
     }
 
     @Override public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {

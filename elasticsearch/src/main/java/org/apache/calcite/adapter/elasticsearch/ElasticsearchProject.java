@@ -50,7 +50,7 @@ public class ElasticsearchProject extends Project implements ElasticsearchRel {
   }
 
   @Override public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
-    return super.computeSelfCost(planner, mq).multiplyBy(0.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(0.001);
   }
 
   @Override public void implement(Implementor implementor) {

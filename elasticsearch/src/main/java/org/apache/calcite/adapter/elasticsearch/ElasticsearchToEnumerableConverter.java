@@ -55,7 +55,7 @@ public class ElasticsearchToEnumerableConverter extends ConverterImpl implements
   }
 
   @Override public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
-    return super.computeSelfCost(planner, mq).multiplyBy(.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(.001);
   }
 
   @Override public Result implement(EnumerableRelImplementor relImplementor, Prefer prefer) {

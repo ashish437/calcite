@@ -450,7 +450,7 @@ public class JdbcRules {
     @Override public RelOptCost computeSelfCost(RelOptPlanner planner,
         RelMetadataQuery mq) {
       return super.computeSelfCost(planner, mq)
-          .multiplyBy(JdbcConvention.COST_MULTIPLIER);
+          .multiplyBy(.001);
     }
 
     public JdbcImplementor.Result implement(JdbcImplementor implementor) {
@@ -509,6 +509,11 @@ public class JdbcRules {
     public JdbcFilter copy(RelTraitSet traitSet, RelNode input,
         RexNode condition) {
       return new JdbcFilter(getCluster(), traitSet, input, condition);
+    }
+
+    @Override public RelOptCost computeSelfCost(RelOptPlanner planner,
+                                                RelMetadataQuery mq) {
+      return super.computeSelfCost(planner, mq).multiplyBy(.01);
     }
 
     public JdbcImplementor.Result implement(JdbcImplementor implementor) {
@@ -873,7 +878,7 @@ public class JdbcRules {
 
     @Override public RelOptCost computeSelfCost(RelOptPlanner planner,
         RelMetadataQuery mq) {
-      return super.computeSelfCost(planner, mq).multiplyBy(.1);
+      return super.computeSelfCost(planner, mq).multiplyBy(.01);
     }
 
     @Override public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {
