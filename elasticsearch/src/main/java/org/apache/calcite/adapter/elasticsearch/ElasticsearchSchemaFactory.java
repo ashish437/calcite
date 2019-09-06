@@ -62,8 +62,9 @@ public class ElasticsearchSchemaFactory implements SchemaFactory {
       final Map<String, Integer> coordinates = mapper.readValue(coordinatesString,
           new TypeReference<Map<String, Integer>>() { });
 
+      final String scheme = (String) map.get("scheme");
       // create client
-      final RestClient client = connect(coordinates);
+      final RestClient client = connect(coordinates, scheme);
 
       final String index = (String) map.get("index");
       Preconditions.checkState(index != null, "'index' is missing in configuration");
@@ -76,14 +77,19 @@ public class ElasticsearchSchemaFactory implements SchemaFactory {
   /**
    * Builds elastic rest client from user configuration
    * @param coordinates list of {@code hostname/port} to connect to
+   * @param connection scheme i.e. either https or http
    * @return newly initialized low-level rest http client for ES
    */
-  private static RestClient connect(Map<String, Integer> coordinates) {
+  private static RestClient connect(Map<String, Integer> coordinates, String scheme) {
     Objects.requireNonNull(coordinates, "coordinates");
     Preconditions.checkArgument(!coordinates.isEmpty(), "no ES coordinates specified");
     final Set<HttpHost> set = new LinkedHashSet<>();
     for (Map.Entry<String, Integer> entry: coordinates.entrySet()) {
-      set.add(new HttpHost(entry.getKey(), entry.getValue()));
+      if (scheme != null) {
+        set.add(new HttpHost(entry.getKey(), entry.getValue(), scheme));
+      } else {
+        set.add(new HttpHost(entry.getKey(), entry.getValue()));
+      }
     }
 
     return RestClient.builder(set.toArray(new HttpHost[0])).build();
